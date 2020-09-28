@@ -138,6 +138,15 @@ public class LagrangeTest extends OptimisationConvexTests {
         Optional<Access1D<?>> multipliers = result.getMultipliers();
         TestUtils.assertTrue("No multipliers present", multipliers.isPresent());
         TestUtils.assertEquals("Lagrangian Multipliers differ", expectedDual, multipliers.get(), accuracy);
+        
+       Builder iebuilder = ConvexSolver.getBuilder();
+       iebuilder.objective(Q, C.negate());
+       MatrixStore<Double> AI = AE.logical().below(AE.negate()).get();
+       MatrixStore<Double> BI = BE.logical().below(BE.negate()).get();
+       iebuilder.inequalities(AI, BI);
+       ConvexSolver iesolver = iebuilder.build();   
+       Result ieresult = iesolver.solve();
+       Optional<Access1D<?>> multipliers1 = ieresult.getMultipliers();
     }
 
 }
