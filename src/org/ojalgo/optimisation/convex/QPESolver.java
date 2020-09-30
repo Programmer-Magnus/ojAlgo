@@ -103,8 +103,12 @@ final class QPESolver extends ConstrainedSolver {
         boolean solved = false;
 
         final Primitive64Store tmpIterX = myIterationX;
+<<<<<<< HEAD
         // final Primitive64Store tmpIterL = Primitive64Store.FACTORY.make(tmpIterA.countRows(), 1L);
         final Primitive64Store tmpIterL = this.getSolutionL();
+=======
+        final Primitive64Store tmpIterL = Primitive64Store.FACTORY.make(tmpIterA.countRows(), 1L);
+>>>>>>> test1
 
         if ((tmpIterA.countRows() < tmpIterA.countColumns()) && (solved = this.isSolvableQ())) {
             // Q is SPD
@@ -148,7 +152,11 @@ final class QPESolver extends ConstrainedSolver {
                 this.getSolutionX().fillMatching(tmpIterX);
             }
 
+<<<<<<< HEAD
             // this.getSolutionL().fillMatching(tmpIterL);
+=======
+            this.getSolutionL().fillMatching(tmpIterL);
+>>>>>>> test1
 
         } else {
 

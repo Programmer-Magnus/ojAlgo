@@ -152,6 +152,7 @@ public class LagrangeTest extends OptimisationConvexTests {
         TestUtils.assertTrue("No multipliers present", multipliers.isPresent());
         TestUtils.assertEquals("Lagrangian Multipliers differ", expectedDual, multipliers.get(), accuracy);
         
+<<<<<<< HEAD
 //  Test similar system where each equality constraint are converted into two inequality constraints.
 //  The result should be the same.
         Builder ieBuilder = ConvexSolver.getBuilder();
@@ -169,6 +170,16 @@ public class LagrangeTest extends OptimisationConvexTests {
         Primitive64Store expectedInequalityDual = FACTORY.column(0, 2, 3, 0);
         TestUtils.assertEquals(expectedInequalityDual, ieMultipliers.get(), accuracy);
  
+=======
+       Builder iebuilder = ConvexSolver.getBuilder();
+       iebuilder.objective(Q, C.negate());
+       MatrixStore<Double> AI = AE.logical().below(AE.negate()).get();
+       MatrixStore<Double> BI = BE.logical().below(BE.negate()).get();
+       iebuilder.inequalities(AI, BI);
+       ConvexSolver iesolver = iebuilder.build();   
+       Result ieresult = iesolver.solve();
+       Optional<Access1D<?>> multipliers1 = ieresult.getMultipliers();
+>>>>>>> test1
     }
 
 }
