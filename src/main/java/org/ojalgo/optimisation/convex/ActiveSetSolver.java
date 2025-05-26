@@ -97,80 +97,67 @@ abstract class ActiveSetSolver extends ConstrainedSolver {
 
         }
 
-        if (!SOLUTION.isSmall(normCurrX, normStepX)) {
-            // Non-zero solution
+        double stepLength = ONE;
 
-            double stepLength = ONE;
+        if (excluded.length > 0) {
 
-            if (excluded.length > 0) {
-
-                MatrixStore<Double> slack = this.getSlackI(excluded);
-
-                if (this.isLogDebug()) {
-
-                    MatrixStore<Double> change = this.getMatrixAI(excluded).get().multiply(iterX);
-
-                    if (slack.count() != change.count()) {
-                        throw new IllegalStateException();
-                    }
-
-                    PhysicalStore<Double> steps = slack.copy();
-                    steps.modifyMatching(DIVIDE, change);
-
-                    this.log("Numer/slack: {}", slack.toRawCopy1D());
-                    this.log("Denom/chang: {}", change.toRawCopy1D());
-                    this.log("Looking for the largest possible step length (smallest positive scalar) among these: {}).", steps.toRawCopy1D());
-                }
-
-                for (int i = 0; i < excluded.length; i++) {
-
-                    SparseArray<Double> excludedInequalityRow = this.getMatrixAI(excluded[i]);
-
-                    double currentSlack = slack.doubleValue(i);
-                    double slackChange = excludedInequalityRow.dot(iterX);
-                    double fraction = Math.abs(currentSlack) / slackChange;
-                    // If the current slack is negative something has already gone wrong.
-                    // Taking the abs value is to handle small negative values due to rounding errors
-                    if (slackChange > ZERO && !SLACK.isZero(slackChange) && SLACK.isSmall(slackChange, currentSlack)) {
-                        fraction = ZERO;
-                    } else if (slackChange <= ZERO || SLACK.isZero(slackChange)) {
-                        fraction = ONE;
-                    }
-
-                    if (ZERO <= fraction && fraction < stepLength) {
-                        stepLength = fraction;
-                        this.setConstraintToInclude(excluded[i]);
-                        if (this.isLogDebug()) {
-                            this.log(1, "Best so far: {} @ {} ({}) ––– {} / {}.", stepLength, i, excluded[i], currentSlack, slackChange);
-                        }
-                    }
-                }
-            }
-
-            if (ACC.isZero(stepLength) && this.getConstraintToInclude() == this.getLastExcluded()) {
-                if (this.isLogProgress()) {
-                    this.log("Break cycle on redundant constraints because step length {} on constraint {}", stepLength, this.getConstraintToInclude());
-                }
-                this.setConstraintToInclude(-1);
-            } else if (stepLength > ZERO) {
-                if (this.isLogProgress()) {
-                    this.log("Performing update with step length {} adding constraint {}", stepLength, this.getConstraintToInclude());
-                }
-                iterX.axpy(stepLength, soluX);
-            } else if (this.isLogProgress()) {
-                this.log("Do nothing because step length {} and size {} but add constraint {}", stepLength, normStepX, this.getConstraintToInclude());
-            }
-            // this.setConstraintToInclude(-1);
-
-        } else {
-            // Zero solution
+            MatrixStore<Double> slack = this.getSlackI(excluded);
 
             if (this.isLogDebug()) {
-                this.log("Step too small!");
+
+                MatrixStore<Double> change = this.getMatrixAI(excluded).get().multiply(iterX);
+
+                if (slack.count() != change.count()) {
+                    throw new IllegalStateException();
+                }
+
+                PhysicalStore<Double> steps = slack.copy();
+                steps.modifyMatching(DIVIDE, change);
+
+                this.log("Numer/slack: {}", slack.toRawCopy1D());
+                this.log("Denom/chang: {}", change.toRawCopy1D());
+                this.log("Looking for the largest possible step length (smallest positive scalar) among these: {}).", steps.toRawCopy1D());
             }
 
-            this.setState(State.FEASIBLE);
+            for (int i = 0; i < excluded.length; i++) {
+
+                SparseArray<Double> excludedInequalityRow = this.getMatrixAI(excluded[i]);
+
+                double currentSlack = slack.doubleValue(i);
+                double slackChange = excludedInequalityRow.dot(iterX);
+                double fraction = Math.abs(currentSlack) / slackChange;
+                // If the current slack is negative something has already gone wrong.
+                // Taking the abs value is to handle small negative values due to rounding errors
+                if (slackChange > ZERO && !SLACK.isZero(slackChange) && SLACK.isSmall(slackChange, currentSlack)) {
+                    fraction = ZERO;
+                } else if (slackChange <= ZERO || SLACK.isZero(slackChange)) {
+                    fraction = ONE;
+                }
+
+                if (ZERO <= fraction && fraction < stepLength) {
+                    stepLength = fraction;
+                    this.setConstraintToInclude(excluded[i]);
+                    if (this.isLogDebug()) {
+                        this.log(1, "Best so far: {} @ {} ({}) ––– {} / {}.", stepLength, i, excluded[i], currentSlack, slackChange);
+                    }
+                }
+            }
         }
+
+        if (ACC.isZero(stepLength) && this.getConstraintToInclude() == this.getLastExcluded()) {
+            if (this.isLogProgress()) {
+                this.log("Break cycle on redundant constraints because step length {} on constraint {}", stepLength, this.getConstraintToInclude());
+            }
+            this.setConstraintToInclude(-1);
+        } else if (stepLength > ZERO) {
+            if (this.isLogProgress()) {
+                this.log("Performing update with step length {} adding constraint {}", stepLength, this.getConstraintToInclude());
+            }
+            iterX.axpy(stepLength, soluX);
+        } else if (this.isLogProgress()) {
+            this.log("Do nothing because step length {} and size {} but add constraint {}", stepLength, normStepX, this.getConstraintToInclude());
+        }
+        // this.setConstraintToInclude(-1);
 
         if (this.isLogDebug()) {
             this.log("Post iteration");
