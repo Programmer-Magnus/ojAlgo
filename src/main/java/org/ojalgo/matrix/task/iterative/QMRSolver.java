@@ -236,16 +236,6 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
         return normErr / normRHS;
     }
 
-    @Override
-    public MatrixStore<Double> solve(final Access2D<?> body, final Access2D<?> rhs, final PhysicalStore<Double> preallocated) throws RecoverableCondition {
-
-        List<Equation> equations = IterativeSolverTask.toListOfRows(body, rhs);
-
-        this.resolve(equations, preallocated);
-
-        return preallocated;
-    }
-
     // --- small helpers on R064Store vectors ---
 
     private static double norm2(final R064Store a) {
