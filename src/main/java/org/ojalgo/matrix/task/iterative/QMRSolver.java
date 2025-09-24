@@ -50,21 +50,11 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
         final int n = equations.size();
 
         // Scratch vectors
-        R064Store r = R064Store.FACTORY.make(n, 1);
-        R064Store vtilde = R064Store.FACTORY.make(n, 1);
-        R064Store wtilde = R064Store.FACTORY.make(n, 1);
-        R064Store v = R064Store.FACTORY.make(n, 1);
-        R064Store w = R064Store.FACTORY.make(n, 1);
         R064Store y = R064Store.FACTORY.make(n, 1);
         R064Store z = R064Store.FACTORY.make(n, 1);
         R064Store p = R064Store.FACTORY.make(n, 1);
         R064Store q = R064Store.FACTORY.make(n, 1);
         R064Store d = R064Store.FACTORY.make(n, 1);
-        R064Store s = R064Store.FACTORY.make(n, 1);
-        R064Store ytilde = R064Store.FACTORY.make(n, 1);
-        R064Store ztilde = R064Store.FACTORY.make(n, 1);
-        R064Store ptilde = R064Store.FACTORY.make(n, 1);
-        R064Store ATq = R064Store.FACTORY.make(n, 1);
 
         final NumberContext accuracy = this.getAccuracyContext();
         final int limit = this.getIterationsLimit();
@@ -77,7 +67,8 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
             double bi = row.getRHS();
             normRHS = HYPOT.invoke(normRHS, bi);
             double ri = bi - row.dot(x);
-            r.set(i, ri);
+            y.set(row.index, ri);
+            z.set(row.index, ri);
             normErr = HYPOT.invoke(normErr, ri);
         }
 // When normRHS is small, use absolute error instead of relative error.
@@ -92,11 +83,7 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
         }
 
         // Initialisations (no preconditioning: M1=M2=I)
-        vtilde.fillMatching(r);
-        y.fillMatching(r);
-        double rho = norm2(r);
-        wtilde.fillMatching(r);
-        z.fillMatching(r);
+        double rho = norm2(y);
         double xi = rho;
         double gamma = 1.0;
         double eta = -1.0;
@@ -120,11 +107,9 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
             }
 
             // v = vtilde / rho ; y = y / rho
-            scaleCopy(vtilde, 1.0 / rho, v);
             scaleInPlace(y, 1.0 / rho);
 
             // w = wtilde / xi ; z = z / xi
-            scaleCopy(wtilde, 1.0 / xi, w);
             scaleInPlace(z, 1.0 / xi);
 
             double delta = z.dot(y);
@@ -132,29 +117,29 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
                 break; // delta breakdown
             }
 
-            // Unpreconditioned: ytilde = y ; ztilde = z
-            ztilde.fillMatching(z);
-            ytilde.fillMatching(y);
+            // Unpreconditioned: update p and q in-place
             if (iterations > 0) {
-                // ytilde -= (xi * delta / epsilon) * p
+                // p = y - (xi * delta / epsilon) * p  (in-place)
                 double factor = (xi * delta / epsilon);
-                axpy(-factor, p, ytilde);
-                p.fillMatching(ytilde);
-                // ztilde -= (rho * (delta / epsilon)) * q
+                scaleInPlace(p, -factor);
+                axpy(1.0, y, p);
+                // q = z - (rho * (delta / epsilon)) * q  (in-place)
                 double factor2 = (rho * (delta / epsilon));
-                axpy(-factor2, q, ztilde);
-                q.fillMatching(ztilde);
+                scaleInPlace(q, -factor2);
+                axpy(1.0, z, q);
             } else {
-                p.fillMatching(ytilde);
-                q.fillMatching(ztilde);
+                p.fillMatching(y);
+                q.fillMatching(z);
             }
 
-            // ptilde = A * p
+            // Compute epsilon = q dot (A * p) without allocating ptilde
+            double eps = 0.0;
             for (int i = 0; i < n; i++) {
-                ptilde.set(i, equations.get(i).dot(p));
+                Equation row = equations.get(i);
+                double aip_dot_p = row.dot(p);
+                eps += q.doubleValue(row.index) * aip_dot_p;
             }
-
-            epsilon = q.dot(ptilde);
+            epsilon = eps;
             if (Math.abs(epsilon) == 0.0) {
                 break; // epsilon breakdown
             }
@@ -164,33 +149,32 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
                 break; // beta breakdown
             }
 
-            // vtilde = ptilde - beta * v
-            vtilde.fillMatching(ptilde);
-            axpy(-beta, v, vtilde);
-            // y = vtilde (since M1=I)
-            y.fillMatching(vtilde);
+            // y = (A * p) - beta * y  (in-place, since M1=I); accumulate A*p directly into y
+            scaleInPlace(y, -beta);
+            for (int i = 0; i < n; i++) {
+                Equation row = equations.get(i);
+                double aip_dot_p = row.dot(p);
+                y.add(row.index, aip_dot_p);
+            }
 
             double rho_prev = rho;
             rho = norm2(y);
 
-            // wtilde = -beta * w + A^T * q
-            scaleCopy(w, -beta, wtilde);
-            // ATq = A^T * q (dense accumulation from rows)
-            ATq.fillAll(0.0);
+            // z = -beta * z + A^T * q  (in-place, since M2^T=I)
+            scaleInPlace(z, -beta);
+            // accumulate A^T * q directly into z (dense accumulation from rows)
             for (int i = 0; i < n; i++) {
-                double qi = q.doubleValue(i);
-                if (qi == 0.0) continue;
-                double[] coeffs = equations.get(i).getCoefficients();
-                for (int j = 0; j < coeffs.length; j++) {
-                    double aij = coeffs[j];
-                    if (aij != 0.0) {
-                        ATq.add(j, 0L, qi * aij);
+                Equation row = equations.get(i);
+                double qi = q.doubleValue(row.index);
+                if (qi != 0.0) {
+                    for (int j = 0; j < row.size(); j++) {
+                        double aij = row.doubleValue(j);
+                        if (aij != 0.0) {
+                            z.add(j, qi * aij);
+                        }
                     }
                 }
             }
-            axpy(1.0, ATq, wtilde);
-            // z = wtilde (since M2^T=I)
-            z.fillMatching(wtilde);
             xi = norm2(z);
 
             double gamma_prev = gamma;
@@ -207,17 +191,12 @@ public final class QMRSolver extends KrylovSubspaceSolver implements IterativeSo
                 // d = (theta_prev * gamma)^2 * d + eta * p
                 scaleInPlace(d, (theta_prev * gamma) * (theta_prev * gamma));
                 axpy(eta, p, d);
-                // s = (theta_prev * gamma)^2 * s + eta * ptilde
-                scaleInPlace(s, (theta_prev * gamma) * (theta_prev * gamma));
-                axpy(eta, ptilde, s);
             } else {
                 scaleCopy(p, eta, d);
-                scaleCopy(ptilde, eta, s);
             }
 
-            // x += d ; r -= s
+            // x += d
             axpy(1.0, d, x);
-            axpy(-1.0, s, r);
 
             // True residual using rows
             normErr = ZERO;
