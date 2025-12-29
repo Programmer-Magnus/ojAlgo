@@ -21,13 +21,14 @@
  */
 package org.ojalgo.array.operation;
 
-/**
- * The ?dotc routines perform a vector-vector operation defined as: Equation
- *
- * @author apete
- */
-public abstract class DOTC implements ArrayOperation {
+public abstract class SUBTRACT implements ArrayOperation {
 
-    public static int THRESHOLD = 128;
+    public static void invoke(final double[] data, final double right) {
+        CorePrimitiveOperation.subtract(data, 0, data.length, 1, data, right);
+    }
+
+    public static void invoke(final double[] data, final double[] right) {
+        CorePrimitiveOperation.subtract(data, 0, Math.min(data.length, right.length), 1, data, right);
+    }
 
 }

@@ -21,16 +21,17 @@
  */
 package org.ojalgo.array.operation;
 
-/**
- * The ?sdot routines compute the inner product of two vectors with double precision. Both routines use double
- * precision accumulation of the intermediate results, but the sdsdot routine outputs the final result in
- * single precision, whereas the dsdot routine outputs the double precision result. The function sdsdot also
- * adds scalar value sb to the inner product.
- *
- * @author apete
- */
-public abstract class SDOT implements ArrayOperation {
+import org.ojalgo.function.constant.PrimitiveMath;
 
-    public static int THRESHOLD = 128;
+public class MEAN implements ArrayOperation {
+
+    public static double invoke(final double[] array) {
+        double sum = PrimitiveMath.ZERO;
+        int limit = array.length;
+        for (int i = 0; i < limit; i++) {
+            sum += array[i];
+        }
+        return sum / limit;
+    }
 
 }

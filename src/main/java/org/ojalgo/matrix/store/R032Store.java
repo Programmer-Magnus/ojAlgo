@@ -68,7 +68,7 @@ import org.ojalgo.type.math.MathType;
  */
 public final class R032Store extends ArrayR032 implements PhysicalStore<Double>, Factory2D.Builder<R032Store> {
 
-    public static final PhysicalStore.Factory<Double, R032Store> FACTORY = new PrimitiveFactory<>() {
+    public static final PrimitiveFactory<R032Store> FACTORY = new PrimitiveFactory<>() {
 
         @Override
         public PrimitiveArray.Factory array() {
@@ -150,6 +150,14 @@ public final class R032Store extends ArrayR032 implements PhysicalStore<Double>,
 
     };
 
+    public static R032Store wrap(final float... data) {
+        return R032Store.wrap(data, data.length);
+    }
+
+    public static R032Store wrap(final float[] data, final int structure) {
+        return new R032Store(structure, data.length / structure, data);
+    }
+
     static R032Store cast(final Access1D<?> matrix) {
         if (matrix instanceof R032Store) {
             return (R032Store) matrix;
@@ -205,6 +213,11 @@ public final class R032Store extends ArrayR032 implements PhysicalStore<Double>,
     @Override
     public void accept(final Access2D<?> supplied) {
         myUtility.accept(supplied);
+    }
+
+    @Override
+    public void add(final int row, final int col, final double addend) {
+        myUtility.add(row, col, addend);
     }
 
     @Override

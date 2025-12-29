@@ -22,6 +22,67 @@ public class QMRSolverTest extends TaskIterativeTests {
     public static final int MAX_MATRIX_SIZE = 6;
     public static final int NUM_RANDOM_MATRICES = 5;
 
+    /**
+     * Creates a 2D Laplacian matrix with Dirichlet boundary conditions
+     *
+     * @param n Grid dimension (n x n grid)
+     * @return R064Store containing the Laplacian matrix
+     */
+    public static R064Store create2DLaplacianMatrix(final int n) {
+        int N = n * n; // Total number of unknowns
+        R064Store A = R064Store.FACTORY.make(N, N);
+
+        // Construct the 2D Laplacian matrix with Dirichlet boundary conditions
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                int idx = i * n + j;
+                A.set(idx, idx, 4.0);
+
+                // Left neighbor
+                if (j > 0) {
+                    A.set(idx, idx - 1, -1.0);
+                }
+                // Right neighbor
+                if (j < n - 1) {
+                    A.set(idx, idx + 1, -1.0);
+                }
+                // Top neighbor
+                if (i > 0) {
+                    A.set(idx, idx - n, -1.0);
+                }
+                // Bottom neighbor
+                if (i < n - 1) {
+                    A.set(idx, idx + n, -1.0);
+                }
+            }
+        }
+
+        return A;
+    }
+
+    /**
+     * Creates the RHS vector for the 2D Laplacian problem
+     *
+     * @param n Grid dimension (n x n grid)
+     * @return R064Store containing the RHS vector
+     */
+    public static R064Store create2DLaplacianRHS(final int n) {
+        int N = n * n; // Total number of unknowns
+        R064Store b = R064Store.FACTORY.make(N, 1);
+
+        // Set RHS value
+        for (int i = 0; i < N; i++) {
+            b.set(i, 0, 1.0);
+        }
+
+        return b;
+    }
+
+    private static IterativeSolverTask getSolver() {
+        return new QMRSolver();
+        //        return new ConjugateGradientSolver();
+    }
+
     private static R064Store hilbert(final int n) {
         R064Store H = R064Store.FACTORY.make(n, n);
         for (int i = 0; i < n; i++) {
@@ -42,6 +103,40 @@ public class QMRSolverTest extends TaskIterativeTests {
         return norm;
     }
 
+    @Test
+    @Disabled
+    public void laplacian2DComparisonTest() {
+        final int MAX_GRID_SIZE = 15;
+
+        // Create array of preconditioners to compare
+        Preconditioner[] preconditioners = { Preconditioner.newIdentity(), Preconditioner.newJacobi(), Preconditioner.newSymmetricGaussSeidel(),
+                Preconditioner.newSSOR(1.25) };
+
+        //        System.out.println("2D Laplacian Preconditioner Comparison");
+        //        System.out.println("========================================");
+
+        // Loop from increasing matrix size
+        for (int n = 1; n <= MAX_GRID_SIZE; n++) {
+            // System.out.println("\nGrid size: " + n + "x" + n + " (Matrix size: " + (n*n) + "x" + (n*n) + ")");
+
+            // Create 2D Laplacian matrix and RHS
+            MatrixStore<Double> A = QMRSolverTest.create2DLaplacianMatrix(n);
+            MatrixStore<Double> b = QMRSolverTest.create2DLaplacianRHS(n);
+
+            // Test each preconditioner
+            for (Preconditioner P : preconditioners) {
+
+                IterativeSolverTask solver = QMRSolverTest.getSolver();
+                solver.configurator().accuracy(NumberContext.of(14)).iterations(200).preconditioner(P);
+                solver.setDebugPrinter(BasicLogger.DEBUG);
+                MatrixStore<Double> solution = solver.solve(A, b).get();
+
+                double residualNorm = QMRSolverTest.residualNorm(A, solution, b);
+                // System.out.println("  " + P.getClass().getSimpleName() + ": residual = " + residualNorm);
+            }
+        }
+    }
+
     /**
      * Quadratic model that failed when using the {@link QMRSolver}, ojAlgo, version 56.1
      * <p>
@@ -51,28 +146,28 @@ public class QMRSolverTest extends TaskIterativeTests {
     @Test
     public void quadraticTest() {
 
-        double[][] q_ = new double[][] { { 52376.074545264215, 154256.51217212676, 1705.561292552271 },
-                { 154256.51217212676, 1.6421719350013012E8, -97037.53141387558 }, { 1705.561292552271, -97037.53141387558, 51821.80732179031 } };
+        double[][] q_ = { { 52376.074545264215, 154256.51217212676, 1705.561292552271 }, { 154256.51217212676, 1.6421719350013012E8, -97037.53141387558 },
+                { 1705.561292552271, -97037.53141387558, 51821.80732179031 } };
 
         MatrixStore<Double> q = RawStore.wrap(q_);
 
-        double[][] l_ = new double[][] { { 28143.10628459914 }, { -265258.1426397235 }, { 16688.44367610407 } };
+        double[][] l_ = { { 28143.10628459914 }, { -265258.1426397235 }, { 16688.44367610407 } };
 
         MatrixStore<Double> l = RawStore.wrap(l_);
 
-        double[][] ae_ = new double[][] { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 1.0 } };
+        double[][] ae_ = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 1.0 } };
 
         MatrixStore<Double> ae = RawStore.wrap(ae_);
 
-        double[][] be_ = new double[][] { { 0.0 }, { 0.0 } };
+        double[][] be_ = { { 0.0 }, { 0.0 } };
 
         MatrixStore<Double> be = RawStore.wrap(be_);
 
-        double[][] ai_ = new double[][] { { -1.0, -0.0, -0.0 }, { -0.0, -1.0, -0.0 }, { -0.0, -0.0, -1.0 } };
+        double[][] ai_ = { { -1.0, -0.0, -0.0 }, { -0.0, -1.0, -0.0 }, { -0.0, -0.0, -1.0 } };
 
         MatrixStore<Double> ai = RawStore.wrap(ai_);
 
-        double[][] bi_ = new double[][] { { 0.050000000000000044 }, { 1.2148895509567436E-4 }, { 0.050000000000000044 } };
+        double[][] bi_ = { { 0.050000000000000044 }, { 1.2148895509567436E-4 }, { 0.050000000000000044 } };
 
         MatrixStore<Double> bi = RawStore.wrap(bi_);
 
@@ -115,32 +210,31 @@ public class QMRSolverTest extends TaskIterativeTests {
     @Test
     public void quadraticTest2() {
 
-        double[][] q_ = new double[][] { { 6668.278705650674, 0.0, 0.0, 0.0, 0.0, 0.0 }, { 0.0, 6.315929943942014E12, 0.0, 0.0, 0.0, 0.0 },
+        double[][] q_ = { { 6668.278705650674, 0.0, 0.0, 0.0, 0.0, 0.0 }, { 0.0, 6.315929943942014E12, 0.0, 0.0, 0.0, 0.0 },
                 { 0.0, 0.0, 2.3988688378282965E13, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 6.359204638050388E15, 0.0, 0.0 },
                 { 0.0, 0.0, 0.0, 0.0, 6.129604959867126E15, 0.0 }, { 0.0, 0.0, 0.0, 0.0, 0.0, 2660643.1998935738 } };
 
         MatrixStore<Double> q = R064Store.FACTORY.makeWrapper(RawStore.wrap(q_));
 
-        double[][] l_ = new double[][] { { -476147.7777069725 }, { -300667.6690518168 }, { -153392.19762707502 }, { -178047.70825643447 },
-                { -59521.3068376414 }, { 4965004.705644156 } };
+        double[][] l_ = { { -476147.7777069725 }, { -300667.6690518168 }, { -153392.19762707502 }, { -178047.70825643447 }, { -59521.3068376414 },
+                { 4965004.705644156 } };
 
         MatrixStore<Double> l = R064Store.FACTORY.makeWrapper(RawStore.wrap(l_));
 
-        double[][] ae_ = new double[][] { { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 } };
+        double[][] ae_ = { { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 } };
 
         MatrixStore<Double> ae = R064Store.FACTORY.makeWrapper(RawStore.wrap(ae_));
 
-        double[][] be_ = new double[][] { { -2.220446049250313E-16 } };
+        double[][] be_ = { { -2.220446049250313E-16 } };
 
         MatrixStore<Double> be = R064Store.FACTORY.makeWrapper(RawStore.wrap(be_));
 
-        double[][] ai_ = new double[][] { { -1.0, -0.0, -0.0, -0.0, -0.0, -0.0 }, { -0.0, -1.0, -0.0, -0.0, -0.0, -0.0 },
-                { -0.0, -0.0, -1.0, -0.0, -0.0, -0.0 }, { -0.0, -0.0, -0.0, -1.0, -0.0, -0.0 }, { -0.0, -0.0, -0.0, -0.0, -1.0, -0.0 },
-                { -0.0, -0.0, -0.0, -0.0, -0.0, -1.0 } };
+        double[][] ai_ = { { -1.0, -0.0, -0.0, -0.0, -0.0, -0.0 }, { -0.0, -1.0, -0.0, -0.0, -0.0, -0.0 }, { -0.0, -0.0, -1.0, -0.0, -0.0, -0.0 },
+                { -0.0, -0.0, -0.0, -1.0, -0.0, -0.0 }, { -0.0, -0.0, -0.0, -0.0, -1.0, -0.0 }, { -0.0, -0.0, -0.0, -0.0, -0.0, -1.0 } };
 
         MatrixStore<Double> ai = R064Store.FACTORY.makeWrapper(RawStore.wrap(ai_));
 
-        double[][] bi_ = new double[][] { { 0.050000000000000044 }, { 1.0521478434747294E-9 }, { 2.7628102075066857E-10 }, { 4.5981121632729495E-14 },
+        double[][] bi_ = { { 0.050000000000000044 }, { 1.0521478434747294E-9 }, { 2.7628102075066857E-10 }, { 4.5981121632729495E-14 },
                 { 8.51609595643812E-14 }, { 0.0024937500000995 } };
 
         MatrixStore<Double> bi = R064Store.FACTORY.makeWrapper(RawStore.wrap(bi_));
@@ -253,7 +347,7 @@ public class QMRSolverTest extends TaskIterativeTests {
 
     @Test
     public void testIllConditionedNearlySingularSmall() {
-        int[] exponents = new int[] { 2, 4, 6, 8, 10, 12 };
+        int[] exponents = { 2, 4, 6, 8, 10, 12 };
         for (int exp : exponents) {
             double eps = Math.pow(10, -exp);
 
@@ -290,7 +384,7 @@ public class QMRSolverTest extends TaskIterativeTests {
         rnd.setSeed(5L);
         R064Store A = R064Store.FACTORY.makeFilled(n, n, rnd);
         for (int i = 0; i < n; i++) {
-            A.add(i, i, n);
+            A.add(i, i, (double) n);
         }
         R064Store xTrue = R064Store.FACTORY.makeFilled(n, 1, rnd);
         R064Store b = TaskIterativeTests.rhs(A, xTrue);
@@ -325,95 +419,6 @@ public class QMRSolverTest extends TaskIterativeTests {
                 TestUtils.assertTrue(resQMR <= 4e-10, "QMR residual too large for n=" + n + ", trial=" + trial + ": " + resQMR);
             }
         }
-    }
-
-    @Test
-    @Disabled
-    public void laplacian2DComparisonTest() {
-        final int MAX_GRID_SIZE = 15;
-
-        // Create array of preconditioners to compare
-        Preconditioner[] preconditioners = new Preconditioner[] {
-                Preconditioner.newIdentity(),
-                Preconditioner.newJacobi(),
-                Preconditioner.newSymmetricGaussSeidel(),
-                Preconditioner.newSSOR(1.25)
-        };
-
-        System.out.println("2D Laplacian Preconditioner Comparison");
-        System.out.println("========================================");
-
-        // Loop from increasing matrix size
-        for (int n = 1; n <= MAX_GRID_SIZE; n++) {
-            System.out.println("\nGrid size: " + n + "x" + n + " (Matrix size: " + (n*n) + "x" + (n*n) + ")");
-
-            // Create 2D Laplacian matrix and RHS
-            MatrixStore<Double> A = create2DLaplacianMatrix(n);
-            MatrixStore<Double> b = create2DLaplacianRHS(n);
-
-            // Test each preconditioner
-            for (Preconditioner P : preconditioners) {
-
-                IterativeSolverTask solver = getSolver();
-                solver.configurator().accuracy(NumberContext.of(14)).iterations(200).preconditioner(P);
-                solver.setDebugPrinter(BasicLogger.DEBUG);
-                MatrixStore<Double> solution = solver.solve(A, b).get();
-
-                double residualNorm = QMRSolverTest.residualNorm(A, solution, b);
-                System.out.println("  " + P.getClass().getSimpleName() + ": residual = " + residualNorm);
-            }
-        }
-    }
-
-    /**
-     * Creates a 2D Laplacian matrix with Dirichlet boundary conditions
-     * @param n Grid dimension (n x n grid)
-     * @return R064Store containing the Laplacian matrix
-     */
-    public static R064Store create2DLaplacianMatrix(int n) {
-        int N = n * n; // Total number of unknowns
-        R064Store A = R064Store.FACTORY.make(N, N);
-
-        // Construct the 2D Laplacian matrix with Dirichlet boundary conditions
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                int idx = i * n + j;
-                A.set(idx, idx, 4.0);
-
-                // Left neighbor
-                if (j > 0) A.set(idx, idx - 1, -1.0);
-                // Right neighbor
-                if (j < n - 1) A.set(idx, idx + 1, -1.0);
-                // Top neighbor
-                if (i > 0) A.set(idx, idx - n, -1.0);
-                // Bottom neighbor
-                if (i < n - 1) A.set(idx, idx + n, -1.0);
-            }
-        }
-
-        return A;
-    }
-
-    /**
-     * Creates the RHS vector for the 2D Laplacian problem
-     * @param n Grid dimension (n x n grid)
-     * @return R064Store containing the RHS vector
-     */
-    public static R064Store create2DLaplacianRHS(int n) {
-        int N = n * n; // Total number of unknowns
-        R064Store b = R064Store.FACTORY.make(N, 1);
-
-        // Set RHS value
-        for (int i = 0; i < N; i++) {
-            b.set(i, 0, 1.0);
-        }
-
-        return b;
-    }
-
-    private static IterativeSolverTask getSolver() {
-        return new QMRSolver();
-//        return new ConjugateGradientSolver();
     }
 
 }

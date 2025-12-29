@@ -4,10 +4,9 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.ojalgo</groupId>
     <artifactId>ojalgo</artifactId>
-    <version>56.1.0-SNAPSHOT</version>
+    <version>56.2.0</version>
     <name>ojAlgo</name>
-    <description>oj! Algorithms - ojAlgo - is Open Source Java code that has to
-        do with mathematics, linear algebra and optimisation.</description>
+    <description>oj! Algorithms - ojAlgo - is Open Source Java code that has to do with mathematics, linear algebra and optimisation.</description>
     <packaging>jar</packaging>
     <url>http://ojalgo.org</url>
     <licenses>
@@ -45,14 +44,13 @@
         </snapshotRepository>
         <repository>
             <id>ossrh</id>
-            <url>
-                https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
         </repository>
     </distributionManagement>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <version.java>11</version.java>
-        <version.org.junit.jupiter>5.14.0</version.org.junit.jupiter>
+        <version.org.junit.jupiter>5.14.1</version.org.junit.jupiter>
         <version.org.openjdk.jmh>1.37</version.org.openjdk.jmh>
     </properties>
     <dependencies>
@@ -116,12 +114,11 @@
                     </includes>
                     <excludedGroups>slow,unstable,network</excludedGroups>
                 </configuration>
-                <dependencies />
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.4.2</version>
+                <version>3.5.0</version>
                 <configuration>
                     <archive>
                         <manifest>
@@ -142,7 +139,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
-                <version>3.3.1</version>
+                <version>3.4.0</version>
                 <executions>
                     <execution>
                         <id>attach-sources</id>

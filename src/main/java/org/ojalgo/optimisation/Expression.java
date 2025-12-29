@@ -21,6 +21,8 @@
  */
 package org.ojalgo.optimisation;
 
+import static org.ojalgo.function.constant.PrimitiveMath.ZERO;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
@@ -114,14 +116,6 @@ public final class Expression extends ModelEntity<Expression> {
      */
     private final boolean myShallowCopy;
 
-    @SuppressWarnings("unused")
-    private Expression(final Expression entityToCopy) {
-
-        this(entityToCopy, null, false);
-
-        ProgrammingError.throwForIllegalInvocation();
-    }
-
     protected Expression(final Expression expressionToCopy, final ExpressionsBasedModel destinationModel, final boolean deep) {
 
         super(expressionToCopy);
@@ -170,6 +164,31 @@ public final class Expression extends ModelEntity<Expression> {
     }
 
     /**
+     * Adds the scaled values from another Expression to this Expression. The lower and upper limits/bounds,
+     * of either involved Expression, are not affected. Nor is the objective weight. Only the factors (linear
+     * and quadratic) are scaled and added.
+     * <P>
+     * This allows for constructs like:
+     *
+     * <pre>
+     * Expression expr1 = model.newExpression("Expr1");
+     * Expression expr2 = model.newExpression("Expr2");
+     * ...
+     * model.newExpression("Expr3").add(2.0, expr1).add(-3.0, expr2).lower(0.0);
+     * </pre>
+     */
+    public Expression add(final Comparable<?> scale, final Expression values) {
+        return this.doAdd(ModelEntity.toBigDecimal(scale), values);
+    }
+
+    /**
+     * @see #add(Comparable, Expression)
+     */
+    public Expression add(final double scale, final Expression values) {
+        return this.doAdd(BigDecimal.valueOf(scale), values);
+    }
+
+    /**
      * @see #add(Variable, Comparable)
      */
     public Expression add(final int index, final Comparable<?> value) {
@@ -209,6 +228,13 @@ public final class Expression extends ModelEntity<Expression> {
      */
     public Expression add(final int index, final long value) {
         return this.doAdd(this.toIntIndex(index), BigDecimal.valueOf(value));
+    }
+
+    /**
+     * @see #add(Comparable, Expression)
+     */
+    public Expression add(final long scale, final Expression values) {
+        return this.doAdd(BigDecimal.valueOf(scale), values);
     }
 
     /**
@@ -514,8 +540,7 @@ public final class Expression extends ModelEntity<Expression> {
     public int hashCode() {
         final int prime = 31;
         int result = super.hashCode();
-        result = prime * result + Objects.hash(myConstant, myLinear, myQuadratic, myShallowCopy);
-        return result;
+        return prime * result + Objects.hash(myConstant, myLinear, myQuadratic, myShallowCopy);
     }
 
     public boolean isAnyLinearFactorNonZero() {
@@ -776,6 +801,16 @@ public final class Expression extends ModelEntity<Expression> {
         return value;
     }
 
+    private Expression doAdd(final BigDecimal scale, final Expression values) {
+        for (Entry<IntIndex, BigDecimal> entry : values.getLinearEntrySet()) {
+            this.doAdd(entry.getKey(), entry.getValue().multiply(scale));
+        }
+        for (Entry<IntRowColumn, BigDecimal> entry : values.getQuadraticEntrySet()) {
+            this.doAdd(entry.getKey(), entry.getValue().multiply(scale));
+        }
+        return this;
+    }
+
     private Expression doAdd(final IntIndex key, final BigDecimal value) {
 
         BigDecimal existing = myLinear.get(key);
@@ -986,6 +1021,43 @@ public final class Expression extends ModelEntity<Expression> {
         return myQuadratic.size();
     }
 
+    double density() {
+
+        int nbVars = myModel.countVariables();
+
+        if (nbVars == 0) {
+
+            return ZERO;
+
+        } else {
+
+            if (this.isAnyQuadraticFactorNonZero()) {
+
+                int nbQuads = this.countQuadraticFactors();
+
+                double denom = nbVars * nbVars;
+
+                double numer = nbQuads;
+
+                return numer / denom;
+
+            } else if (this.isAnyLinearFactorNonZero()) {
+
+                int nbLins = this.countLinearFactors();
+
+                double denom = nbVars;
+
+                double numer = nbLins;
+
+                return numer / denom;
+
+            } else {
+
+                return ZERO;
+            }
+        }
+    }
+
     @Override
     int deriveAdjustmentExponent() {
 
@@ -994,14 +1066,31 @@ public final class Expression extends ModelEntity<Expression> {
         }
 
         AggregatorSet<BigDecimal> aggregators = BigAggregator.getSet();
-        AggregatorFunction<BigDecimal> largest = aggregators.largest();
-        AggregatorFunction<BigDecimal> smallest = aggregators.smallest();
+        AggregatorFunction<BigDecimal> largest = aggregators.maximum();
+        AggregatorFunction<BigDecimal> smallest = aggregators.minimum();
+
+        BigDecimal factor;
 
         if (this.isAnyQuadraticFactorNonZero()) {
 
-            for (BigDecimal quadraticFactor : myQuadratic.values()) {
-                largest.invoke(quadraticFactor);
-                smallest.invoke(quadraticFactor);
+            boolean onDiagonal = false;
+
+            for (Entry<IntRowColumn, BigDecimal> quadraticEntry : myQuadratic.entrySet()) {
+                IntRowColumn key = quadraticEntry.getKey();
+                if (key.row == key.column) {
+                    onDiagonal = true;
+                    factor = quadraticEntry.getValue().abs();
+                    largest.invoke(factor);
+                    smallest.invoke(factor);
+                }
+            }
+
+            if (!onDiagonal) {
+                for (BigDecimal quadraticFactor : myQuadratic.values()) {
+                    factor = quadraticFactor.abs();
+                    largest.invoke(factor);
+                    smallest.invoke(factor);
+                }
             }
 
             return ModelEntity.deriveAdjustmentExponent(largest, smallest, RANGE);
@@ -1009,8 +1098,9 @@ public final class Expression extends ModelEntity<Expression> {
         } else if (this.isAnyLinearFactorNonZero()) {
 
             for (BigDecimal linearFactor : myLinear.values()) {
-                largest.invoke(linearFactor);
-                smallest.invoke(linearFactor);
+                factor = linearFactor.abs();
+                largest.invoke(factor);
+                smallest.invoke(factor);
             }
 
             return ModelEntity.deriveAdjustmentExponent(largest, smallest, RANGE);
@@ -1208,21 +1298,26 @@ public final class Expression extends ModelEntity<Expression> {
      */
     boolean isNegativeOn(final Set<IntIndex> subset) {
 
-        if (!this.isAnyQuadraticFactorNonZero()) {
+        if (this.isAnyQuadraticFactorNonZero()) {
+
+            return false;
+
+        } else {
+
             for (IntIndex index : subset) {
                 Variable setVar = myModel.getVariable(index);
                 int signum = myLinear.get(index).signum();
                 if (signum < 0 && setVar.isLowerLimitSet() && setVar.getLowerLimit().signum() >= 0) {
-
+                    continue;
                 } else if (signum > 0 && setVar.isUpperLimitSet() && setVar.getUpperLimit().signum() <= 0) {
-
+                    continue;
                 } else {
                     return false;
                 }
             }
-        }
 
-        return true;
+            return true;
+        }
     }
 
     /**
@@ -1232,21 +1327,26 @@ public final class Expression extends ModelEntity<Expression> {
      */
     boolean isPositiveOn(final Set<IntIndex> subset) {
 
-        if (!this.isAnyQuadraticFactorNonZero()) {
+        if (this.isAnyQuadraticFactorNonZero()) {
+
+            return false;
+
+        } else {
+
             for (IntIndex index : subset) {
                 Variable setVar = myModel.getVariable(index);
                 int signum = myLinear.get(index).signum();
                 if (signum > 0 && setVar.isLowerLimitSet() && setVar.getLowerLimit().signum() >= 0) {
-
+                    continue;
                 } else if (signum < 0 && setVar.isUpperLimitSet() && setVar.getUpperLimit().signum() <= 0) {
-
+                    continue;
                 } else {
                     return false;
                 }
             }
-        }
 
-        return true;
+            return true;
+        }
     }
 
     boolean isRedundant() {

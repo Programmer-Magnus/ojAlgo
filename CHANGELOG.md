@@ -11,6 +11,52 @@ Added / Changed / Deprecated / Fixed / Removed / Security
 
 > Corresponds to changes in the `develop` branch since the last release
 
+## [56.2.0] – 2025-12-29
+
+### Added
+
+#### org.ojalgo.optimisation
+
+- New `NullSpaceProjection` and `NullSpaceASS`. Modifies the problem before delegating to `ActiveSetSolver` eliminating equality constraints and reducing the number of variables. Turn this feature On/Off via configuration option. The default is to use when the model is big enough and has a significant number equality constraints.
+- It is now possible to call `maximise` or `minimise` on an `ExpressionsBasedModel` explicitly supplying the `ExpressionsBasedModel.Integration` to use, bypassing the usual mechanism of selecting this.
+- `Expression`:s can now be constructed as weigthed combinations of other `Expression`:s –  a convenience that makes it much easier to reason about how to construct certain types of constraints.
+
+#### org.ojalgo.matrix
+
+- New sparse LDL decomposition `SparseQDLDL` based on the QDLDL factorisation algorithm. Designed for large, sparse KKT systems in convex QP problems and integrates with the existing decomposition/factorisation APIs.
+- Improved sparse matrix infrastructure for R064 CSC/CSR stores and suppliers: `RowsSupplier`/`ColumnsSupplier` and compressed sparse stores (`R064CSC`, `R064CSR`, `CompressedSparseR064`) now support more efficient copying and supply operations, reducing temporary allocations when building or transforming sparse matrices.
+- An approximate Minimum Degree calculator – not quite a full/correct Approximate Minimum Degree (AMD) implementation, but a simplified alternative.
+- `InvertibleFactor` now has overloaded `ftran` and `btran` methods with `double[]` arguments.
+
+### Changed
+
+#### org.ojalgo.optimisation
+
+- Modified to the active set in `ActiveSetSolver` is initialised – limited the number of inequalities that can be set to active.
+- Tweaked the default behaviour when selecting either dense/direct or sparse/iterative `ActiveSetSolver` – now favour dense/direct in some cases. Previously always chose sparse/iterative.
+- Slight change to how quadratic expressions are scaled when constructing solver data. Now primarily uses the diagonal elements.
+- The default preconditioner is now SSORPreconditioner rather than JacobiPreconditioner.
+
+#### org.ojalgo.structure
+
+- `ColumnView` and `RowView` now support directly updating the underlying data structure (provided that implements `Mutate2D`).
+
+### Fixed
+
+#### org.ojalgo.optimisation
+
+- Presolving could in some cases incorrectly mark models, with quadratic constraints, as `INFEASIBLE`.
+
+## [56.1.1] – 2025-11-09
+
+### Added
+
+#### org.ojalgo.matrix
+
+- There was a problem with `GenericStore` factory type declarations and usage.
+
+## [56.1.0] – 2025-11-04
+
 ### Added
 
 #### org.ojalgo.data
@@ -24,7 +70,23 @@ Added / Changed / Deprecated / Fixed / Removed / Security
 
 - Spectral decomposition: New `Eigenvalue.Spectral` interface (extends both `Eigenvalue` and `SingularValue`) and factory convenience `Eigenvalue.Factory#makeSpectral(int)` for normal (in particular symmetric / Hermitian) matrices, exposing a decomposition that can simultaneously be treated as an eigenvalue- and singular value decomposition. Includes `isSPD()` convenience check.
 - Static utility helpers: `Eigenvalue.reconstruct(Eigenvalue)` plus `SingularValue.invert(...)`, `SingularValue.solve(...)` and `SingularValue.reconstruct(...)` centralise pseudoinverse / solve / reconstruction logic.
-- New Quasi-Minimal Residual (QMR) iterative solver for general nonsymmetric square systems. Contributed by @Programmer-Magnus.
+- New Quasi-Minimal Residual (QMR) and Minimal Residual (MINRES) iterative solvers for general nonsymmetric square and symmetric (possibly indefinite) systems, respectively. Contributed by @Programmer-Magnus.
+
+#### org.ojalgo.concurrent
+
+- Execute tasks in a separate JVM: New `ExternalProcessExecutor` that runs a specified static method or a `Serializable` `Callable`/`Runnable` in an external OS process (child JVM). Provides:
+  - Hard cancellation and timeouts by killing the process tree.
+  - Binary IPC framing (MAGIC/VER/LEN/CRC32) over stdio; stdout is reserved for protocol frames to avoid corruption.
+  - Configurable `ProcessOptions` builder for heap (`-Xmx`), additional JVM args, system properties, environment and classpath; sensible defaults for Maven/Gradle test/main classpaths.
+  - Overloads `execute(...)`, `call(...)` and `run(...)` to target methods by `Method`, `MethodDescriptor` or owner/name/parameter types.
+  - `ProcessWorker` main class (child entrypoint) and `MethodDescriptor` describing methods across classloaders.
+  - `ProcessAwareThread` and a process-aware thread factory used so that interrupting an owner thread forcibly tears down the child process.
+- Thread factory: `DaemonPoolExecutor` exposes an internal process-aware `ThreadFactory` used by `ExternalProcessExecutor` (threads remain daemon and identifiably named).
+- Collections: `MultiviewSet` adds `isAnyContents()` to cheaply detect if any backed priority view still has queued entries.
+
+#### org.ojalgo.machine
+
+- `JavaType` adds utilities `box(Class<?>)`, `unbox(Class<?>)` and `resolveType(String)` to convert between primitive/wrapper types and resolve primitive/array/class names (e.g. "int[]", "java.lang.String[]").
 
 ### Changed
 
@@ -46,11 +108,21 @@ Added / Changed / Deprecated / Fixed / Removed / Security
 
 - In `ConvexSolver`, the iterative Schur complement solver used in the active set solver, is now configurable (which implementation to use). Use either the `ConjugateGradientSolver` or `QMRSolver`, or some other implementation.
 
+#### org.ojalgo.concurrent
+
+- `DivideAndConquer` now uses a safer split-and-join: sibling tasks are cancelled on failure, causes are propagated, and interruption is preserved. The configurable `Divider` exposes `threshold(int)` and `parallelism(IntSupplier)`; `ProcessingService#newDivider()` returns one bound to its executor. Default worker count uses `OjAlgoUtils.ENVIRONMENT.threads` consistently.
+- `ProcessingService#divider()` is deprecated in favour of `newDivider()` (same behaviour); javadocs clarified for `compute/map/reduce*` regarding uniqueness and hashing requirements.
+- `DaemonPoolExecutor`: internal addition of a process-aware thread factory; no behavioural change for existing `new*ThreadPool(...)` helpers.
+
 ### Deprecated
 
 #### org.ojalgo.matrix
 
 - `SingularValue#getD()` deprecated; use `getS()` instead. (Existing code continues to work; plan to remove in a future major release.)
+
+#### org.ojalgo.concurrent
+
+- `ProcessingService#divider()` in favour of `newDivider()`.
 
 ### Fixed
 

@@ -34,7 +34,6 @@ import java.util.stream.Collectors;
 
 import org.ojalgo.array.ArrayR064;
 import org.ojalgo.array.ArrayR256;
-import org.ojalgo.array.BasicArray;
 import org.ojalgo.array.SparseArray.NonzeroView;
 import org.ojalgo.function.constant.BigMath;
 import org.ojalgo.matrix.decomposition.Cholesky;
@@ -45,9 +44,9 @@ import org.ojalgo.matrix.store.MatrixStore;
 import org.ojalgo.matrix.store.PhysicalStore;
 import org.ojalgo.matrix.store.R064Store;
 import org.ojalgo.matrix.task.iterative.ConjugateGradientSolver;
-import org.ojalgo.matrix.task.iterative.JacobiPreconditioner;
 import org.ojalgo.matrix.task.iterative.IterativeSolverTask;
 import org.ojalgo.matrix.task.iterative.Preconditioner;
+import org.ojalgo.matrix.task.iterative.SSORPreconditioner;
 import org.ojalgo.optimisation.Expression;
 import org.ojalgo.optimisation.ExpressionsBasedModel;
 import org.ojalgo.optimisation.GenericSolver;
@@ -368,9 +367,10 @@ public abstract class ConvexSolver extends GenericSolver {
     public static final class Configuration {
 
         private boolean myCombinedScaleFactor = true;
+        private Boolean myProjection = null;
         private boolean myExtendedPrecision = false;
-        private NumberContext myIterativeAccuracy = NumberContext.of(10, 14).withMode(RoundingMode.HALF_DOWN);
-        private Supplier<Preconditioner> myIterativePreconditioner = JacobiPreconditioner::new;
+        private NumberContext myIterativeAccuracy = NumberContext.of(10, 16).withMode(RoundingMode.HALF_DOWN);
+        private Supplier<Preconditioner> myIterativePreconditioner = SSORPreconditioner::new;
         private Supplier<IterativeSolverTask> myIterativeSolver = ConjugateGradientSolver::new;
         private double mySmallDiagonal = RELATIVELY_SMALL + MACHINE_EPSILON;
         private Function<Structure2D, MatrixDecomposition.Solver<Double>> mySolverGeneral = LU.R064::make;
@@ -450,6 +450,14 @@ public abstract class ConvexSolver extends GenericSolver {
             return this;
         }
 
+        public Configuration iterative(final Supplier<IterativeSolverTask> solver, final Supplier<Preconditioner> preconditioner) {
+            Objects.requireNonNull(solver);
+            Objects.requireNonNull(preconditioner);
+            myIterativeSolver = solver;
+            myIterativePreconditioner = preconditioner;
+            return this;
+        }
+
         public Configuration iterative(final Supplier<IterativeSolverTask> solver, final Supplier<Preconditioner> preconditioner,
                 final NumberContext accuracy) {
             Objects.requireNonNull(solver);
@@ -477,6 +485,17 @@ public abstract class ConvexSolver extends GenericSolver {
 
         public MatrixDecomposition.Solver<Double> newSolverSPD(final Structure2D structure) {
             return mySolverSPD.apply(structure);
+        }
+
+        /**
+         * Null-Space projection. (Eliminating equality constraints and reducing the number of variables.)
+         * <p>
+         * TRUE means yes, FALSE NO, and NULL auto. Even if configured to TRUE there must also be both
+         * equality and inequality constraints for this to actually be used.
+         */
+        public Configuration projection(final Boolean projection) {
+            myProjection = projection;
+            return this;
         }
 
         public double smallDiagonal() {
@@ -517,6 +536,10 @@ public abstract class ConvexSolver extends GenericSolver {
             return this;
         }
 
+        Boolean getProjection() {
+            return myProjection;
+        }
+
     }
 
     public static final class ModelIntegration extends ExpressionsBasedModel.Integration<ConvexSolver> {
@@ -540,13 +563,34 @@ public abstract class ConvexSolver extends GenericSolver {
             } else {
 
                 ConvexData<Double> data = ConvexSolver.copy(model, R064Store.FACTORY);
-                BasePrimitiveSolver solver = BasePrimitiveSolver.newSolver(data, options);
 
-                if (model.options.validate) {
-                    solver.setValidator(this.newValidator(model));
+                int nbVars = data.countVariables();
+                int nbEqus = data.countEqualityConstraints();
+                int nbInes = data.countInequalityConstraints();
+
+                Boolean projection = options.convex().getProjection();
+
+                if (nbEqus > 0 && nbInes > 0 && nbEqus <= nbVars
+                        && (Boolean.TRUE.equals(projection) || (projection == null && (nbVars >= 80) && (nbVars / nbEqus <= 2)))) {
+
+                    ConvexSolver solver = new NullSpaceASS(options, data);
+
+                    if (model.options.validate) {
+                        solver.setValidator(this.newValidator(model));
+                    }
+
+                    return solver;
+
+                } else {
+
+                    BasePrimitiveSolver solver = BasePrimitiveSolver.newSolver(data, options);
+
+                    if (model.options.validate) {
+                        solver.setValidator(this.newValidator(model));
+                    }
+
+                    return solver;
                 }
-
-                return solver;
             }
         }
 
@@ -558,45 +602,16 @@ public abstract class ConvexSolver extends GenericSolver {
         @Override
         public Result toModelState(final Result solverState, final ExpressionsBasedModel model) {
 
-            List<Variable> freeVariables = model.getFreeVariables();
-            Set<IntIndex> fixedVariables = model.getFixedVariables();
-            int nbFreeVars = freeVariables.size();
-            int nbModelVars = model.countVariables();
-
-            BasicArray<?> modelSolution;
             if (model.options.convex().isExtendedPrecision()) {
-                modelSolution = ArrayR256.make(nbModelVars);
-                for (int i = 0; i < nbFreeVars; i++) {
-                    modelSolution.set(model.indexOf(freeVariables.get(i)), solverState.get(i));
-                }
+                return ExpressionsBasedModel.Integration.expandFreeToFull(solverState, model, ArrayR256.FACTORY);
             } else {
-                modelSolution = ArrayR064.make(nbModelVars);
-                for (int i = 0; i < nbFreeVars; i++) {
-                    modelSolution.set(model.indexOf(freeVariables.get(i)), solverState.doubleValue(i));
-                }
+                return ExpressionsBasedModel.Integration.expandFreeToFull(solverState, model, ArrayR064.FACTORY);
             }
-            for (IntIndex fixed : fixedVariables) {
-                modelSolution.set(fixed.index, model.getVariable(fixed.index).getValue());
-            }
-
-            return solverState.withSolution(modelSolution);
         }
 
         @Override
         public Result toSolverState(final Result modelState, final ExpressionsBasedModel model) {
-
-            List<Variable> freeVariables = model.getFreeVariables();
-            int nbFreeVars = freeVariables.size();
-
-            ArrayR064 solverSolution = ArrayR064.make(nbFreeVars);
-
-            for (int i = 0; i < nbFreeVars; i++) {
-                Variable variable = freeVariables.get(i);
-                int modelIndex = model.indexOf(variable);
-                solverSolution.set(i, modelState.doubleValue(modelIndex));
-            }
-
-            return modelState.withSolution(solverSolution);
+            return ExpressionsBasedModel.Integration.reduceFullToFree(modelState, model, ArrayR064.FACTORY);
         }
 
     }

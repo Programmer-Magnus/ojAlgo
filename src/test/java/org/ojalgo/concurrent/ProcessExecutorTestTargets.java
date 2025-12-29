@@ -19,16 +19,40 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package org.ojalgo.array.operation;
+package org.ojalgo.concurrent;
 
-/**
- * The ?dotu routines perform a vector-vector reduction operation defined as Equation where xi and yi are
- * elements of complex vectors x and y.
- *
- * @author apete
- */
-public abstract class DOTU implements ArrayOperation {
+import java.io.Serializable;
 
-    public static int THRESHOLD = 128;
+final class ProcessExecutorTestTargets {
 
+    static final class Counter implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        final int base;
+
+        Counter(final int base) {
+            this.base = base;
+        }
+
+        public int plus(final int x) {
+            return base + x;
+        }
+    }
+
+    static int add(final int a, final int b) {
+        return a + b;
+    }
+
+    static void sleepMs(final long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    static void throwIAE() {
+        throw new IllegalArgumentException("boom");
+    }
 }

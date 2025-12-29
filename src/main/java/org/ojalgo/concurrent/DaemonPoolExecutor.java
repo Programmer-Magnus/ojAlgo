@@ -25,6 +25,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.ojalgo.OjAlgoUtils;
+import org.ojalgo.netio.BasicLogger;
 
 public final class DaemonPoolExecutor extends ThreadPoolExecutor {
 
@@ -101,7 +102,22 @@ public final class DaemonPoolExecutor extends ThreadPoolExecutor {
         return target -> {
             Thread thread = new Thread(group, target, prefix + DaemonPoolExecutor.COUNTER.incrementAndGet());
             thread.setDaemon(true);
+            thread.setUncaughtExceptionHandler((t, e) -> BasicLogger.error(e, "Uncaught exception in {}", t.getName()));
             return thread;
+        };
+    }
+
+    /**
+     * Create a {@link ThreadFactory} producing {@link ProcessAwareThread}s. These threads are daemon threads
+     * and can be used to "own" an external process: if the thread is interrupted, the process is forcibly
+     * destroyed.
+     */
+    static ThreadFactory newProcessAwareThreadFactory(final String name) {
+        String prefix = name.endsWith("-") ? name : name + "-";
+        return target -> {
+            Thread t = new ProcessAwareThread(GROUP, target, prefix + COUNTER.incrementAndGet());
+            t.setUncaughtExceptionHandler((thr, e) -> BasicLogger.error(e, "Uncaught exception in {}", thr.getName()));
+            return t;
         };
     }
 

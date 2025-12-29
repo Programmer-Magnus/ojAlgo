@@ -39,6 +39,7 @@ import java.util.stream.Stream;
 
 import org.ojalgo.ProgrammingError;
 import org.ojalgo.array.Array1D;
+import org.ojalgo.array.DenseArray;
 import org.ojalgo.function.constant.BigMath;
 import org.ojalgo.netio.BasicLogger;
 import org.ojalgo.netio.InMemoryFile;
@@ -276,6 +277,48 @@ public final class ExpressionsBasedModel implements Optimisation.Model {
      */
     public static abstract class Integration<S extends Optimisation.Solver> implements Optimisation.Integration<ExpressionsBasedModel, S> {
 
+        protected static Result expandFreeToFull(final Result solverState, final ExpressionsBasedModel model, final DenseArray.Factory<?, ?> factory) {
+
+            List<Variable> freeVariables = model.getFreeVariables();
+            Set<IntIndex> fixedVariables = model.getFixedVariables();
+            int nbFreeVars = freeVariables.size();
+            int nbModelVars = model.countVariables();
+
+            DenseArray<?> modelSolution = factory.make(nbModelVars);
+
+            if (modelSolution.isPrimitive()) {
+                for (int i = 0; i < nbFreeVars; i++) {
+                    modelSolution.set(model.indexOf(freeVariables.get(i)), solverState.doubleValue(i));
+                }
+            } else {
+                for (int i = 0; i < nbFreeVars; i++) {
+                    modelSolution.set(model.indexOf(freeVariables.get(i)), solverState.get(i));
+                }
+            }
+
+            for (IntIndex fixed : fixedVariables) {
+                modelSolution.set(fixed.index, model.getVariable(fixed.index).getValue());
+            }
+
+            return solverState.withSolution(modelSolution);
+        }
+
+        protected static Result reduceFullToFree(final Result modelState, final ExpressionsBasedModel model, final DenseArray.Factory<?, ?> factory) {
+
+            List<Variable> freeVariables = model.getFreeVariables();
+            int nbFreeVars = freeVariables.size();
+
+            DenseArray<?> solverSolution = factory.make(nbFreeVars);
+
+            for (int i = 0; i < nbFreeVars; i++) {
+                Variable variable = freeVariables.get(i);
+                int modelIndex = model.indexOf(variable);
+                solverSolution.set(i, modelState.doubleValue(modelIndex));
+            }
+
+            return modelState.withSolution(solverSolution);
+        }
+
         /**
          * @see Optimisation.Integration#extractSolverState(Optimisation.Model)
          */
@@ -284,11 +327,32 @@ public final class ExpressionsBasedModel implements Optimisation.Model {
             return this.toSolverState(model.getVariableValues(), model);
         }
 
+        /**
+         * The reverse of {@link #toSolverState(Optimisation.Result, ExpressionsBasedModel)}.
+         *
+         * @see #reduceFullToFree(Optimisation.Result, ExpressionsBasedModel, DenseArray.Factory)
+         * @see #expandFreeToFull(Optimisation.Result, ExpressionsBasedModel, DenseArray.Factory)
+         */
         @Override
         public Result toModelState(final Result solverState, final ExpressionsBasedModel model) {
             return solverState;
         }
 
+        /**
+         * This default implementation assumes the solver state and model state are identical, and simply
+         * returns the supplied model state.
+         * <p>
+         * In any case where the set of variables present in the solver does not match what's in the model
+         * one-to-one, this method and its reciprocal
+         * {@link #toModelState(Optimisation.Result, ExpressionsBasedModel)} needs to be overridden with
+         * custom mapping implementations.
+         * <p>
+         * A very common case is when the solver only works with free (not eliminated by the pre-solver)
+         * variables. There are helper methods to do just that.
+         *
+         * @see #reduceFullToFree(Optimisation.Result, ExpressionsBasedModel, DenseArray.Factory)
+         * @see #expandFreeToFull(Optimisation.Result, ExpressionsBasedModel, DenseArray.Factory)
+         */
         @Override
         public Result toSolverState(final Result modelState, final ExpressionsBasedModel model) {
             return modelState;
@@ -791,12 +855,12 @@ public final class ExpressionsBasedModel implements Optimisation.Model {
 
     public static ExpressionsBasedModel parse(final InputStream input, final FileFormat format) {
         switch (format) {
-        case MPS:
-            return FileFormatMPS.read(input);
-        case EBM:
-            return FileFormatEBM.read(input);
-        default:
-            throw new IllegalArgumentException();
+            case MPS:
+                return FileFormatMPS.read(input);
+            case EBM:
+                return FileFormatEBM.read(input);
+            default:
+                throw new IllegalArgumentException();
         }
     }
 
@@ -818,6 +882,7 @@ public final class ExpressionsBasedModel implements Optimisation.Model {
 
     private final Map<String, Expression> myExpressions = new HashMap<>();
     private final Set<IntIndex> myFixedVariables = new HashSet<>();
+    private transient ExpressionsBasedModel.Integration<?> myForcedIntegration = null;
     private transient boolean myInfeasible = false;
     private final EnumBitSet<IntegrationProperty> myIntegrationProperties = new EnumBitSet<>();
     private Optimisation.Result myKnownSolution = null;
@@ -1360,18 +1425,20 @@ public final class ExpressionsBasedModel implements Optimisation.Model {
 
     @Override
     public Optimisation.Result maximise() {
+        return this.optimise(Optimisation.Sense.MAX, null);
+    }
 
-        this.setOptimisationSense(Optimisation.Sense.MAX);
-
-        return this.optimise();
+    public <S extends Optimisation.Solver> Optimisation.Result maximise(final Integration<S> forcedIntegration) {
+        return this.optimise(Optimisation.Sense.MAX, forcedIntegration);
     }
 
     @Override
     public Optimisation.Result minimise() {
+        return this.optimise(Optimisation.Sense.MIN, null);
+    }
 
-        this.setOptimisationSense(Optimisation.Sense.MIN);
-
-        return this.optimise();
+    public <S extends Optimisation.Solver> Optimisation.Result minimise(final Integration<S> forcedIntegration) {
+        return this.optimise(Optimisation.Sense.MIN, forcedIntegration);
     }
 
     public Expression newExpression(final String name) {
@@ -1689,7 +1756,10 @@ public final class ExpressionsBasedModel implements Optimisation.Model {
         }
     }
 
-    private Optimisation.Result optimise() {
+    private Optimisation.Result optimise(final Optimisation.Sense sense, final Integration<?> forcedIntegration) {
+
+        this.setOptimisationSense(sense);
+        myForcedIntegration = forcedIntegration;
 
         if (!myShallowCopy && PRESOLVERS.size() > 0) {
             this.scanEntities();
@@ -1787,12 +1857,14 @@ public final class ExpressionsBasedModel implements Optimisation.Model {
 
     ExpressionsBasedModel.Integration<?> getIntegration() {
 
-        ExpressionsBasedModel.Integration<?> retVal = null;
+        ExpressionsBasedModel.Integration<?> retVal = myForcedIntegration;
 
-        for (final ExpressionsBasedModel.Integration<?> preferred : INTEGRATIONS) {
-            if (preferred.isCapable(this)) {
-                retVal = preferred;
-                break;
+        if (retVal == null) {
+            for (ExpressionsBasedModel.Integration<?> preferred : INTEGRATIONS) {
+                if (preferred.isCapable(this)) {
+                    retVal = preferred;
+                    break;
+                }
             }
         }
 
