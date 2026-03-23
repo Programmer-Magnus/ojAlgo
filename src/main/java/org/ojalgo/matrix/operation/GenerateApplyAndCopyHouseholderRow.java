@@ -76,6 +76,8 @@ public abstract class GenerateApplyAndCopyHouseholderRow implements MatrixOperat
             }
 
             destination.beta = PrimitiveMath.ABS.invoke(tmpScale) / tmpNorm2;
+        } else {
+            destination.beta = PrimitiveMath.ZERO;
         }
 
         return retVal;
@@ -127,6 +129,8 @@ public abstract class GenerateApplyAndCopyHouseholderRow implements MatrixOperat
             }
 
             destination.beta = (float) (PrimitiveMath.ABS.invoke(tmpScale) / tmpNorm2);
+        } else {
+            destination.beta = (float) PrimitiveMath.ZERO;
         }
 
         return retVal;
@@ -166,9 +170,10 @@ public abstract class GenerateApplyAndCopyHouseholderRow implements MatrixOperat
             tmpNorm2 = PrimitiveMath.SQRT.invoke(tmpNorm2);
 
             // data[(row + (col * structure))] = ComplexNumber.makePolar(tmpNorm2 * tmpNormInf, tmpScale.phase());
-            data[row + col * structure] = tmpScale.signum().multiply(tmpNorm2 * tmpNormInf).get();
+            Scalar<N> tmpSign = tmpScale.norm() == PrimitiveMath.ZERO ? scalar.one() : tmpScale.signum();
+            data[row + col * structure] = tmpSign.multiply(tmpNorm2 * tmpNormInf).get();
             // tmpScale = tmpScale.subtract(ComplexNumber.makePolar(tmpNorm2, tmpScale.phase()));
-            tmpScale = tmpScale.subtract(tmpScale.signum().multiply(tmpNorm2)).get();
+            tmpScale = tmpScale.subtract(tmpSign.multiply(tmpNorm2)).get();
 
             tmpVector[col] = scalar.one().get();
 
@@ -179,6 +184,8 @@ public abstract class GenerateApplyAndCopyHouseholderRow implements MatrixOperat
 
             // destination.beta = ComplexNumber.valueOf(tmpScale.norm() / tmpNorm2);
             destination.beta = scalar.cast(tmpScale.norm() / tmpNorm2);
+        } else {
+            destination.beta = scalar.zero().get();
         }
 
         return retVal;

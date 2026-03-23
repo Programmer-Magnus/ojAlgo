@@ -127,8 +127,13 @@ abstract class DenseSingularValue<N extends Comparable<N>> extends AbstractDecom
         for (int j = p - 2; j > k; j--) {
 
             tmp = HYPOT.invoke(s[j], f);
-            cos = s[j] / tmp;
-            sin = f / tmp;
+            if (tmp == ZERO) {
+                cos = ONE;
+                sin = ZERO;
+            } else {
+                cos = s[j] / tmp;
+                sin = f / tmp;
+            }
             s[j] = tmp;
 
             q2RotR.rotateRight(p - 1, j, cos, sin);
@@ -139,8 +144,13 @@ abstract class DenseSingularValue<N extends Comparable<N>> extends AbstractDecom
         }
 
         tmp = HYPOT.invoke(s[k], f);
-        cos = s[k] / tmp;
-        sin = f / tmp;
+        if (tmp == ZERO) {
+            cos = ONE;
+            sin = ZERO;
+        } else {
+            cos = s[k] / tmp;
+            sin = f / tmp;
+        }
         s[k] = tmp;
 
         q2RotR.rotateRight(p - 1, k, cos, sin);
@@ -156,8 +166,13 @@ abstract class DenseSingularValue<N extends Comparable<N>> extends AbstractDecom
         for (int j = k; j < p; j++) {
 
             tmp = HYPOT.invoke(s[j], f);
-            cos = s[j] / tmp;
-            sin = f / tmp;
+            if (tmp == ZERO) {
+                cos = ONE;
+                sin = ZERO;
+            } else {
+                cos = s[j] / tmp;
+                sin = f / tmp;
+            }
             s[j] = tmp;
 
             mtrxQ1.rotateRight(k - 1, j, cos, sin);
@@ -173,6 +188,11 @@ abstract class DenseSingularValue<N extends Comparable<N>> extends AbstractDecom
         // Calculate the shift.
         final double scale = MAX.invoke(MAX.invoke(MAX.invoke(MAX.invoke(ABS.invoke(s[p - 1]), ABS.invoke(s[p - 2])), ABS.invoke(e[p - 2])), ABS.invoke(s[k])),
                 ABS.invoke(e[k]));
+
+        if (scale == ZERO) {
+            e[p - 2] = ZERO;
+            return;
+        }
 
         final double s_p1 = s[p - 1] / scale;
         final double s_p2 = s[p - 2] / scale;
@@ -202,8 +222,13 @@ abstract class DenseSingularValue<N extends Comparable<N>> extends AbstractDecom
         for (int j = k; j < p - 1; j++) {
 
             tmp = HYPOT.invoke(f, g);
-            cos = f / tmp;
-            sin = g / tmp;
+            if (tmp == ZERO) {
+                cos = ONE;
+                sin = ZERO;
+            } else {
+                cos = f / tmp;
+                sin = g / tmp;
+            }
 
             if (j != k) {
                 e[j - 1] = tmp;
@@ -217,8 +242,13 @@ abstract class DenseSingularValue<N extends Comparable<N>> extends AbstractDecom
             q2RotR.rotateRight(j + 1, j, cos, sin);
 
             tmp = HYPOT.invoke(f, g);
-            cos = f / tmp;
-            sin = g / tmp;
+            if (tmp == ZERO) {
+                cos = ONE;
+                sin = ZERO;
+            } else {
+                cos = f / tmp;
+                sin = g / tmp;
+            }
             s[j] = tmp;
 
             f = cos * e[j] + sin * s[j + 1];
